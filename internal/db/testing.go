@@ -2,13 +2,19 @@ package db
 
 import (
 	"database/sql"
+	"github.com/golang-migrate/migrate"
+	"github.com/golang-migrate/migrate/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/source/file"
 	_ "github.com/mattn/go-sqlite3"
+	"log"
 	"os"
 	"testing"
 )
 
 func NewTestSQLiteDB(t *testing.T) *sql.DB {
 	t.Helper()
+
+	log.SetFlags(log.Lshortfile)
 
 	db, err := sql.Open("sqlite3", "test.db")
 	if err != nil {
@@ -24,8 +30,22 @@ func NewTestSQLiteDB(t *testing.T) *sql.DB {
 		t.Fatal()
 	}
 
-	if _, err := db.Exec(initDBSchema); err != nil {
-		DropTestSQLiteDB(t)
+	driver, err := sqlite3.WithInstance(db, &sqlite3.Config{})
+	if err != nil {
+		t.Fatal()
+	}
+
+	m, err := migrate.NewWithDatabaseInstance("file://../db/migrations", "test.db", driver)
+	if err != nil {
+		log.Printf("%s\n", err)
+		t.Fatal()
+	}
+
+	if err = m.Up(); err != nil {
+		t.Fatal()
+	}
+
+	if _, err = db.Exec(testData); err != nil {
 		t.Fatal()
 	}
 
@@ -40,31 +60,7 @@ func DropTestSQLiteDB(t *testing.T) {
 	}
 }
 
-var initDBSchema = `
-	CREATE TABLE genre(
-	  	id INTEGER AUTO_INCREMENT PRIMARY KEY,
-	    name VARCHAR NOT NULL  
-	);
-
-	CREATE TABLE author(
-	    id INTEGER AUTO_INCREMENT PRIMARY KEY,
-	    last_name VARCHAR NOT NULL,
-	    first_name VARCHAR NOT NULL,
-	    birthday DATE NOT NULL,
-	    bio TEXT
-	);
-
-	CREATE TABLE book(
-	    id INTEGER AUTO_INCREMENT PRIMARY KEY,
-	    name VARCHAR NOT NULL,
-	    released DATE NOT NULL, 
-	    coast INTEGER NOT NULL,
-	    pages INTEGER NOT NULL,
-	    poster VARCHAR NOT NULL,
-	    author_id INTEGER REFERENCES author(id) ON DELETE CASCADE ON UPDATE CASCADE,
-	    genre_id INTEGER REFERENCES genre(id) ON DELETE CASCADE ON UPDATE CASCADE
-	);	
-
+var testData = `
 	INSERT INTO genre(id, name) VALUES (1, 'test_genre');
 	INSERT INTO genre(id, name) VALUES (2, 'test_genre 2');
 	INSERT INTO author(id, last_name, first_name, birthday, bio) VALUES (1, 'Potter', 'Harry', '03.12.1968', 'bio');
